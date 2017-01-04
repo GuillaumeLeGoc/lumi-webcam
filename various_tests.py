@@ -3,7 +3,7 @@
 """
 Created on Wed Dec 14 21:06:49 2016
 
-@author: pvkh
+@author: guillaume
 """
 
 import cv2

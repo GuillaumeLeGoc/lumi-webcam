@@ -8,23 +8,30 @@ Created on Tue Jan 10 21:11:33 2017
 # Tentative de mesure de la température d'une image prise avec la webcam
 # Utilisation des formules CIE 1931, coefficients de TAOS
 # The code can be executed once, then spyder needs to be restart for unknown reason
+# WARNING : Images enregistrées par OpenCV au format (BGR), ie:
+    # image[:,:,0] = BLUE
+    # image[:,:,1] = GREEN
+    # image[:,:,2] = RED
 
 import cv2
 
-webcam = cv2.VideoCapture(0)
-rval, snapshot = webcam.read()
+try:
+    webcam
+except NameError:
+    webcam = cv2.VideoCapture(0)
 
-cv2.imshow("Snapshot",snapshot)
-webcam.release()
+retval, image = webcam.read() # prendre une frame avec la camera
 
-print("Max R ="+str(snapshot[:,:,0].max()))
-print("Max G ="+str(snapshot[:,:,1].max()))
-print("Max B ="+str(snapshot[:,:,2].max()))
+cv2.imshow("snapshot",image)
+
+print("Max B ="+str(image[:,:,0].max()))
+print("Max G ="+str(image[:,:,1].max()))
+print("Max R ="+str(image[:,:,2].max()))
 
 # Averaging RGB values
-R = snapshot[:,:,0].mean()
-G = snapshot[:,:,1].mean()
-B = snapshot[:,:,2].mean()
+B = image[:,:,0].mean()
+G = image[:,:,1].mean()
+R = image[:,:,2].mean()
 
 # CIE space
 X = (-0.14282)*R + (1.54924)*G + (-0.95641)*B

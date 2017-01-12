@@ -43,7 +43,7 @@ while rval: # while rval is false
     # Correlated color temperature
     CCT = 449*n**3 + 3525*n**2 + 6823.3*n + 5520.33
     
-    cv2.putText(frame, "JE T'AIME", org, fontFace, fontScale, color) # Add text
+    cv2.putText(frame, str(CCT), org, fontFace, fontScale, color) # Add text
 
     key = cv2.waitKey(20)
     if key == 27: # exit on ESC

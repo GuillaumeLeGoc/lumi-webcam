@@ -6,3 +6,5 @@ Il semblerait que OpenCV enregistre les images de la webcam non pas en (RGB) mai
      image[:,:,0] = BLUE
      image[:,:,1] = GREEN
      image[:,:,2] = RED
+
+

@@ -11,6 +11,7 @@ Creating GUI
 import cv2
 import sys
 from PyQt4 import QtGui
+import pyqtgraph as PQtP
 
 class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
     """ Cette classe gère l'interface graphique principale qui affiche l'entrée
@@ -37,13 +38,15 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         button_on = QtGui.QPushButton('On', self)
         button_off = QtGui.QPushButton('Off', self)
         button_save = QtGui.QPushButton('Save as picture', self)
-        button_play_pause = QtGui.QPushButton('Play/Pause', self)
+        button_start = QtGui.QPushButton('Start stream',self)
+        button_stop = QtGui.QPushButton('Stop stream',self)
         
         # Ajout des boutons
-        grid_layout.addWidget(button_on, 1, 0, 1, 2)
-        grid_layout.addWidget(button_off, 2, 0, 1, 2)
-        grid_layout.addWidget(button_save, 3, 0, 1, 1)
-        grid_layout.addWidget(button_play_pause, 4, 0, 1, 1)
+        grid_layout.addWidget(button_on, 1, 0, 2, 2)
+        grid_layout.addWidget(button_off, 3, 0, 2, 2)
+        grid_layout.addWidget(button_save, 5, 0, 1, 1)
+        grid_layout.addWidget(button_start, 6, 0, 1, 1)
+        grid_layout.addWidget(button_stop,7, 0, 1, 1)
         
         # Ajout du layout sur la fenêtre principale
         self.setLayout(grid_layout)
@@ -55,14 +58,24 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         # Fonctions connectées aux boutons
         button_on.clicked.connect(self.openWebcam)
         button_off.clicked.connect(self.closeWebcam)
+        button_start.clicked.connect(self.startStream)
+        button_stop.clicked.connect(self.stopStream)
         
         self.show()
         
     def openWebcam(self):
         """ Open webcam through OpenCV.
         """
-        self.webcam = cv2.VideoCapture(0)
-        print "Webcam ON" # init VideoCapture object (on/off)
+    
+        try:
+            if self.webcam.isOpened():
+                print "Webcam already ON"
+            else:
+                self.webcam = cv2.VideoCapture(0)
+                print "Webcam connected"
+        except AttributeError:
+            self.webcam = cv2.VideoCapture(0)
+            print "Webcam connected"
 
     def closeWebcam(self):
         """ Close webcam throught OpenCV.
@@ -70,14 +83,29 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         try:
             if self.webcam.isOpened():
                 self.webcam.release()
-                self.webcam = cv2.VideoCapture(0)
                 print "Webcam OFF"
             else:
-                self.webcam = cv2.VideoCapture(0)
-        except NameError:
-            print "Webcam already closed"
+                print "Webcam already off"
+        except AttributeError:
+            print "Error: Webcam not connected yet"
+        
+    def startStream(self):
+        """
+        """
+        
+        if self.webcam.isOpened(): # if the camera is already opened by OpenCV, get a frame
+            rval, frame = self.webcam.read()
             
-
+        while self.play_state:
+            rval, frame = self.webcam.read()
+            if not self.play_state: # exit on ESC
+                print "Stopping stream"
+                break
+    
+    def stopStream(self):
+        """
+        """
+            
 gui = WebcamGui()
     
     

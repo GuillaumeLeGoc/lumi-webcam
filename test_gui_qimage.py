@@ -18,6 +18,7 @@ Creating GUI
 
 import sys
 import cv2
+import numpy as np
 from PyQt4 import QtGui
 
 
@@ -35,70 +36,101 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         self.initWindow()
         
     def initWindow(self):
+        """ Creates the main window, adds widgets and connect them to methods
+        """
         
-        ## Création de la fenêtre
+        ##############################
+        ### Création de la fenêtre ###
+        ##############################
+        
         # Layout en grille
         grid_layout = QtGui.QGridLayout()
         # Espace entre les widgets
-        grid_layout.setSpacing(10)
+        grid_layout.setSpacing(8)
         
-        ## Création des widgets
+        ############################
+        ### Création des widgets ###
+        ############################
+        
         # Boutons
         button_connect = QtGui.QPushButton('Connect webcam', self)
         button_save = QtGui.QPushButton('Save as picture', self)
         button_start = QtGui.QPushButton('Start stream',self)
         button_stop = QtGui.QPushButton('Stop stream',self)
         
-        # Image window
+        # webcam canvas
         self.img_label = QtGui.QLabel(self)
+        
+        # histogram canvas
+        self.his_label = QtGui.QLabel(self)
         
         # Text boxes
         self.temp_label = QtGui.QLabel(self)
         self.red_label = QtGui.QLabel(self) # hips
         self.green_label = QtGui.QLabel(self)
         self.blue_label = QtGui.QLabel(self)
-                
-        # Ajout des widgets
-        grid_layout.addWidget(button_connect, 1, 0, 2, 2)
-        grid_layout.addWidget(button_save, 5, 0, 1, 1)
-        grid_layout.addWidget(button_start, 6, 0, 1, 1)
-        grid_layout.addWidget(button_stop, 7, 0, 1, 1)
-        grid_layout.addWidget(self.img_label, 9, 0, 7, 7)
-        grid_layout.addWidget(self.temp_label, 9, 10, 3, 3)
-        grid_layout.addWidget(self.red_label, 10, 10, 3, 3)
-        grid_layout.addWidget(self.green_label, 11, 10, 3, 3)
-        grid_layout.addWidget(self.blue_label, 12, 10, 3, 3)
+        self.messages_to_user = QtGui.QLabel(self)
+        
+        #########################
+        ### Ajout des widgets ###
+        #########################
+        
+        grid_layout.addWidget(button_connect, 0, 0, 1, 1)
+        grid_layout.addWidget(button_start, 0, 1, 1, 1)
+        grid_layout.addWidget(button_stop, 0, 2, 1, 1)
+        grid_layout.addWidget(button_save, 0, 3, 1, 1)
+        grid_layout.addWidget(self.img_label, 1, 0, 9, 9)
+        grid_layout.addWidget(self.his_label, 2, 10, 5, 5)
+        grid_layout.addWidget(self.temp_label, 7, 10, 1, 1)
+        grid_layout.addWidget(self.red_label, 8, 10, 1, 1)
+        grid_layout.addWidget(self.green_label, 9, 10, 1, 1)
+        grid_layout.addWidget(self.blue_label, 10, 10, 1, 1)
+        grid_layout.addWidget(self.messages_to_user, 15,1,1,10)
+        
         
         # Ajout du layout sur la fenêtre principale
         self.setLayout(grid_layout)
         
-        # Paramètre et affichage de l'interface à l'écran
+        #################################
+        ### Paramètres de l'interface ###
+        #################################
+        
         self.setGeometry(300, 300, 800, 600) # x, y, W, H; move+resize method
         self.setWindowTitle("Webcam Analyzer") # Titre de la fenêtre  
         self.setWindowIcon(QtGui.QIcon("webcam-512.png")) # Icone
         
-        # Fonctions connectées aux boutons
+        ########################################
+        ### Fonctions connectées aux boutons ###
+        ########################################
+        
         button_connect.clicked.connect(self.openWebcam)
         button_start.clicked.connect(self.startStream)
         button_stop.clicked.connect(self.stopStream)
         button_save.clicked.connect(self.savePicture)
-
-        # Afficher le GUI à l'écran
+        
+        #################################
+        ### Afficher le GUI à l'écran ###
+        #################################
+        
         self.show()
         
+    #######################################################
+    ############### DEFINITION DES METHODES ###############
+    #######################################################
+    
     def openWebcam(self):
         """ Open webcam through OpenCV.
         """
     
         try: # Vérifier si l'attribut webcam existe
             if self.webcam.isOpened():
-                print "Webcam already connected."
+                self.printToUser("Webcam already connected.")
             else:
                 self.webcam = cv2.VideoCapture(0) # Créer un objet OpenCV
-                print "Webcam connected."
+                self.printToUser("Webcam connected.")
         except AttributeError:
             self.webcam = cv2.VideoCapture(0)
-            print "Webcam connected."
+            self.printToUser("Webcam connected.")
        
     def startStream(self):
         """ Begin webcam stream.
@@ -109,7 +141,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
                 self.isRead, self.webcam_frame = self.webcam.read() # tenter une 
                 # première capture
                 self.webcam_break_loop = False # initialiser le témoin de on/off
-                print "Starting stream."
+                self.printToUser("Starting stream.")
                 while self.isRead: # boucle pour streamer la webcam
                     
                     # Récupère une frame de la webcam                
@@ -122,30 +154,32 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
                     # Calcul de la moyenne des niveaux de R,G,B
                     self.averageRGB()
                     
+                    # Affichage des moyennes R, G, B
+                    self.showAverageRGB()
+                    
                     # Calcul et affichage de la température de couleurs
                     self.calculateTemperature()
                     
-                    # Conversion de l'image OpenCV en image QImage
-                    self.frame_qimg = QtGui.QImage(self.frame_rgb.data, 
-                                    self.frame_rgb.shape[1], 
-                                    self.frame_rgb.shape[0],
-                                    self.frame_rgb.strides[0],
-                                    QtGui.QImage.Format_RGB888)
+                    # Calcul de l'histogramme
+                    self.calculateHistogram()
                     
-                    # Conversion en image QPixmap pour l'afficher
-                    self.frame_qpix = QtGui.QPixmap.fromImage(self.frame_qimg)
+                    # Conversion de l'image OpenCV en image QImage
+                    self.frame_qpix = self.convertToQPixelmap(self.frame_rgb)
                     
                     # Affichage de l'image sur le canvas du GUI
                     self.img_label.setPixmap(self.frame_qpix)
+                    
+                    # Affichage de l'histogramme
+                    self.his_label.setPixmap(self.histplot_qpix)
                                                                     
                     cv2.waitKey(20) # laisser le temps d'appuyer sur "stop"
                     if self.webcam_break_loop:
-                        print "Streaming stopped."
+                        self.printToUser("Streaming stopped.")
                         break
             else:
-                print "Connect webcam first..."
+                self.printToUser("Connect webcam first...")
         except AttributeError:
-            print "Connect webcam first."
+            self.printToUser("Connect webcam first.")
 
     def stopStream(self):
         """ Stop webcam stream.
@@ -154,29 +188,33 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         try:
             if not self.webcam_break_loop:
                 self.webcam_break_loop = True
-                print "Stopping stream."
+                self.printToUser("Stopping stream...")
             else:
-                print "Stream not running..."
+                self.printToUser("Stream not running...")
         except AttributeError:
-            print "Stream not running."
+            self.printToUser("Stream not running.")
             
     def averageRGB(self):
         """Get the mean Red, Green and Blue in webcame frame.
         """
         
         # Calcul des moyennes
-        self.R = self.frame_rgb[:,:,0].mean()
-        self.G = self.frame_rgb[:,:,1].mean()
-        self.B = self.frame_rgb[:,:,2].mean()
+        self.R, self.G, self.B = cv2.split(self.frame_rgb)
+        self.R = self.R.mean()
+        self.G = self.G.mean()
+        self.B = self.B.mean()
+    
+    def showAverageRGB(self):
+        """ Shows mean values of RGB channels next to the frame from the webcam.
+        """
         
         # Affichage dans les boxes
-        self.red_label.setText(str(self.R))
+        self.red_label.setText("Mean RED: "+str(int(round(self.R))))
         self.red_label.adjustSize()
-        self.green_label.setText(str(self.G))
+        self.green_label.setText("Mean GREEN: "+str(int(round(self.G))))
         self.green_label.adjustSize()
-        self.blue_label.setText(str(self.B))
+        self.blue_label.setText("Mean BLUE: "+str(int(round(self.B))))
         self.blue_label.adjustSize()
-        
             
     def calculateTemperature(self):
         """ Calculate mean color temperature.
@@ -197,14 +235,68 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         # Correlated color temperature according McCamy
         self.color_temp = 449*(n**3) + 3525*(n**2) + 6823.3*n + 5520.33
         
-        self.temp_label.setText(str(self.color_temp))
+        self.temp_label.setText("Temperature = "+str(int(round(self.color_temp)))+"K")
         self.temp_label.adjustSize()
+    
+    
+        
+    def calculateHistogram(self):
+        """ Calculate the histogram of the input picture.
+        """
+        
+        # Define color map
+        colors = [ (255,0,0),(0,255,0),(0,0,255) ]
+        # Define empty image to plot histogram in
+        plot_to_fill = np.zeros((300,300,3))
+        # Define bins of the histogram
+        bins = np.arange(256).reshape(256,1)
+        
+        # Boucle sur les canaux
+        for channel, color in enumerate(colors):
+            # Calcul de l'histogramme
+            hist_item = cv2.calcHist(self.frame,[channel],None,[256],[0,256])
+            # Normalisation
+            cv2.normalize(hist_item,hist_item,0,255,cv2.NORM_MINMAX)
+            # Conversion
+            hist = np.int32(np.around(hist_item))
+            pts = np.int32(np.column_stack((bins, hist)))
+            cv2.polylines(plot_to_fill, [pts], False, color)
+        # Mettre dans le bon sens
+        histplot = np.flipud(plot_to_fill)
+        histplot = np.uint8(histplot)
+        
+        # Conversion en objet QPixelMap
+        self.histplot_qpix = self.convertToQPixelmap(histplot)
+            
+    def convertToQPixelmap(self, imgToConvert):
+        """ Convert cv2 image (BGR numpy array) to QPixelmap object to display
+        it the GUI.
+        """
+        
+        # Conversion en image QImage
+        frame_qimg = QtGui.QImage(imgToConvert.data, 
+                                    imgToConvert.shape[1], 
+                                    imgToConvert.shape[0],
+                                    imgToConvert.strides[0],
+                                    QtGui.QImage.Format_RGB888)
+        
+        # Conversion en image QPixmap pour l'afficher
+        return QtGui.QPixmap.fromImage(frame_qimg)
         
     def savePicture(self):
         """ Save last frame as png picture.
         """
-        self.file_name = QtGui.QFileDialog.getSaveFileName(self, "Save as... (specify extension)", "")
+        self.file_name = QtGui.QFileDialog.getSaveFileName(self, 
+                                        "Save as... (specify extension)", "")
         cv2.imwrite(self.file_name, self.frame)
+        
+    def printToUser(self, message):
+        """ Print message in a box.
+        """
+        
+        self.messages_to_user.setText(message)
+        self.messages_to_user.adjustSize()
+        
         
 ###############################################################################
 

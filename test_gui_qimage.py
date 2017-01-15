@@ -1,6 +1,14 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """
+Created on Sun Jan 15 10:30:06 2017
+
+@author: pvkh
+"""
+
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+"""
 Created on Thu Jan 12 14:45:07 2017
 
 Creating GUI
@@ -9,11 +17,9 @@ Creating GUI
 """
 
 import cv2
+import numpy as np
 from PyQt4 import QtGui
-from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
-import matplotlib.pyplot as plt
 
-                
 
 class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
     """ Cette classe gère l'interface graphique principale qui affiche l'entrée
@@ -36,25 +42,24 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         # Espace entre les widgets
         grid_layout.setSpacing(10)
         
-        # Création des boutons
+        ## Création des widgets
+        # Boutons
         button_on = QtGui.QPushButton('On', self)
         button_off = QtGui.QPushButton('Off', self)
         button_save = QtGui.QPushButton('Save as picture', self)
         button_start = QtGui.QPushButton('Start stream',self)
         button_stop = QtGui.QPushButton('Stop stream',self)
         
-        # Création d'une fenêtre pyplot
-        self.figure = plt.figure()
-        # Création du widget affichant la figure
-        self.canvas = FigureCanvas(self.figure)
-        
+        # Image window
+        self.img_label = QtGui.QLabel(self)
+                
         # Ajout des widgets
         grid_layout.addWidget(button_on, 1, 0, 2, 2)
         grid_layout.addWidget(button_off, 3, 0, 2, 2)
         grid_layout.addWidget(button_save, 5, 0, 1, 1)
         grid_layout.addWidget(button_start, 6, 0, 1, 1)
-        grid_layout.addWidget(button_stop,7, 0, 1, 1)
-        grid_layout.addWidget(self.canvas,10,0,7,7)
+        grid_layout.addWidget(button_stop, 7, 0, 1, 1)
+        grid_layout.addWidget(self.img_label, 9, 0, 7, 7)
         
         # Ajout du layout sur la fenêtre principale
         self.setLayout(grid_layout)
@@ -105,21 +110,32 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         
         try: # Vérifier si l'attribut existe, autrement prévenir l'utilisateur.
             if self.webcam.isOpened(): # vérifie si la camera est bien connectée
-                self.rval, self.webcam_frame = self.webcam.read() # tenter une 
+                self.isRead, self.webcam_frame = self.webcam.read() # tenter une 
                 # première capture
                 self.webcam_break_loop = False # initialiser le témoin de on/off
                 print "Starting stream."
-                while self.rval: # boucle pour streamer la webcam
-                    self.rval, self.webcam_frame = self.webcam.read()
+                while self.isRead: # boucle pour streamer la webcam
                     
-                    # Création de la figure pyplot
-                    image = self.figure.add_subplot(111)
-                    # Ne pas conserver l'image
-                    image.hold(False)
-                    # Afficher l'image
-                    image.imshow(self.webcam_frame)
-                    # Relier le pyplot au canvas
-                    self.canvas.draw()
+                    # Récupère une frame de la webcam                
+                    self.isRead, self.frame = self.webcam.read()
+                    
+                    # Conversion BGR > RGB
+                    self.frame_rgb = cv2.cvtColor(self.frame, 
+                                                         cv2.COLOR_BGR2RGB)
+                    
+                    # Conversion de l'image OpenCV en image QImage
+                    self.frame_qimg = QtGui.QImage(self.frame_rgb.data, 
+                                    self.frame_rgb.shape[1], 
+                                    self.frame_rgb.shape[0],
+                                    self.frame_rgb.strides[0],
+                                    QtGui.QImage.Format_RGB888)
+                    
+                    # Conversion en image QPixmap pour l'afficher
+                    self.frame_qpix = QtGui.QPixmap.fromImage(self.frame_qimg)
+                    
+                    # Affichage de l'image sur le canvas du GUI
+                    self.img_label.setPixmap(self.frame_qpix)
+                                                                    
                     
                     cv2.waitKey(20) # laisser le temps d'appuyer sur "stop"
                     if self.webcam_break_loop:
@@ -142,6 +158,10 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
                 print "Stream not running..."
         except AttributeError:
             print "Stream not running."
+            
+    def calculateTemperature(self):
+        """ Calculate mean color temperature.
+        """
 
 
 gui = WebcamGui()

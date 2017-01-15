@@ -16,8 +16,8 @@ Creating GUI
 @author: pvkh
 """
 
+import sys
 import cv2
-import numpy as np
 from PyQt4 import QtGui
 
 
@@ -44,22 +44,30 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         
         ## Création des widgets
         # Boutons
-        button_on = QtGui.QPushButton('On', self)
-        button_off = QtGui.QPushButton('Off', self)
+        button_connect = QtGui.QPushButton('Connect webcam', self)
         button_save = QtGui.QPushButton('Save as picture', self)
         button_start = QtGui.QPushButton('Start stream',self)
         button_stop = QtGui.QPushButton('Stop stream',self)
         
         # Image window
         self.img_label = QtGui.QLabel(self)
+        
+        # Text boxes
+        self.temp_label = QtGui.QLabel(self)
+        self.red_label = QtGui.QLabel(self) # hips
+        self.green_label = QtGui.QLabel(self)
+        self.blue_label = QtGui.QLabel(self)
                 
         # Ajout des widgets
-        grid_layout.addWidget(button_on, 1, 0, 2, 2)
-        grid_layout.addWidget(button_off, 3, 0, 2, 2)
+        grid_layout.addWidget(button_connect, 1, 0, 2, 2)
         grid_layout.addWidget(button_save, 5, 0, 1, 1)
         grid_layout.addWidget(button_start, 6, 0, 1, 1)
         grid_layout.addWidget(button_stop, 7, 0, 1, 1)
         grid_layout.addWidget(self.img_label, 9, 0, 7, 7)
+        grid_layout.addWidget(self.temp_label, 9, 10, 3, 3)
+        grid_layout.addWidget(self.red_label, 10, 10, 3, 3)
+        grid_layout.addWidget(self.green_label, 11, 10, 3, 3)
+        grid_layout.addWidget(self.blue_label, 12, 10, 3, 3)
         
         # Ajout du layout sur la fenêtre principale
         self.setLayout(grid_layout)
@@ -67,13 +75,14 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         # Paramètre et affichage de l'interface à l'écran
         self.setGeometry(300, 300, 800, 600) # x, y, W, H; move+resize method
         self.setWindowTitle("Webcam Analyzer") # Titre de la fenêtre  
+        self.setWindowIcon(QtGui.QIcon("webcam-512.png")) # Icone
         
         # Fonctions connectées aux boutons
-        button_on.clicked.connect(self.openWebcam)
-        button_off.clicked.connect(self.closeWebcam)
+        button_connect.clicked.connect(self.openWebcam)
         button_start.clicked.connect(self.startStream)
         button_stop.clicked.connect(self.stopStream)
-        
+        button_save.clicked.connect(self.savePicture)
+
         # Afficher le GUI à l'écran
         self.show()
         
@@ -90,20 +99,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         except AttributeError:
             self.webcam = cv2.VideoCapture(0)
             print "Webcam connected."
-
-    def closeWebcam(self):
-        """ Close webcam through OpenCV.
-        """
-        
-        try: # Vérifie si l'attribut webcam existe déjà
-            if self.webcam.isOpened():
-                self.webcam.release()
-                print "Webcam disconnected."
-            else:
-                print "Webcam already disconnected."
-        except AttributeError:
-            print "Error: Webcam not connected yet."
-            
+       
     def startStream(self):
         """ Begin webcam stream.
         """
@@ -123,6 +119,12 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
                     self.frame_rgb = cv2.cvtColor(self.frame, 
                                                          cv2.COLOR_BGR2RGB)
                     
+                    # Calcul de la moyenne des niveaux de R,G,B
+                    self.averageRGB()
+                    
+                    # Calcul et affichage de la température de couleurs
+                    self.calculateTemperature()
+                    
                     # Conversion de l'image OpenCV en image QImage
                     self.frame_qimg = QtGui.QImage(self.frame_rgb.data, 
                                     self.frame_rgb.shape[1], 
@@ -136,7 +138,6 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
                     # Affichage de l'image sur le canvas du GUI
                     self.img_label.setPixmap(self.frame_qpix)
                                                                     
-                    
                     cv2.waitKey(20) # laisser le temps d'appuyer sur "stop"
                     if self.webcam_break_loop:
                         print "Streaming stopped."
@@ -159,11 +160,61 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         except AttributeError:
             print "Stream not running."
             
+    def averageRGB(self):
+        """Get the mean Red, Green and Blue in webcame frame.
+        """
+        
+        # Calcul des moyennes
+        self.R = self.frame_rgb[:,:,0].mean()
+        self.G = self.frame_rgb[:,:,1].mean()
+        self.B = self.frame_rgb[:,:,2].mean()
+        
+        # Affichage dans les boxes
+        self.red_label.setText(str(self.R))
+        self.red_label.adjustSize()
+        self.green_label.setText(str(self.G))
+        self.green_label.adjustSize()
+        self.blue_label.setText(str(self.B))
+        self.blue_label.adjustSize()
+        
+            
     def calculateTemperature(self):
         """ Calculate mean color temperature.
         """
+        
+        # CIE space
+        X = (-0.14282)*self.R + (1.54924)*self.G + (-0.95641)*self.B
+        Y = (-0.32466)*self.R + (1.57837)*self.G + (-0.73191)*self.B
+        Z = (-0.68202)*self.R + (0.77073)*self.G + (0.56332)*self.B
 
+        # Chromaticity
+        x = X/(X+Y+Z)
+        y = Y/(X+Y+Z)
+        
+         # constant for McCamy's formula
+        n = (x - 0.3320) / (0.1858 - y)
+        
+        # Correlated color temperature according McCamy
+        self.color_temp = 449*(n**3) + 3525*(n**2) + 6823.3*n + 5520.33
+        
+        self.temp_label.setText(str(self.color_temp))
+        self.temp_label.adjustSize()
+        
+    def savePicture(self):
+        """ Save last frame as png picture.
+        """
+        self.file_name = QtGui.QFileDialog.getSaveFileName(self, "Save as... (specify extension)", "")
+        cv2.imwrite(self.file_name, self.frame)
+        
+###############################################################################
 
-gui = WebcamGui()
+# Utilisation en dehors de Spyder
+
+def main():
+    qtapp = QtGui.QApplication(sys.argv)
+    gui = WebcamGui()
+    sys.exit(qtapp.exec_())
     
+if __name__ == '__main__':
+    main() 
     

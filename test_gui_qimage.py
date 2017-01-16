@@ -3,18 +3,12 @@
 """
 Created on Sun Jan 15 10:30:06 2017
 
-@author: pvkh
-"""
-
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Jan 12 14:45:07 2017
-
 Creating GUI
 
 @author: pvkh
 """
+
+from __future__ import division
 
 import sys
 import cv2
@@ -58,6 +52,11 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         button_start = QtGui.QPushButton('Start stream',self)
         button_stop = QtGui.QPushButton('Stop stream',self)
         
+        # Device ID
+        self.device_id_text = QtGui.QLabel('Enter webcam device ID')
+        self.device_id_box = QtGui.QLineEdit('0', self)
+        self.device_id = int(self.device_id_box.text())
+        
         # webcam canvas
         self.img_label = QtGui.QLabel(self)
         
@@ -69,6 +68,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         self.red_label = QtGui.QLabel(self) # hips
         self.green_label = QtGui.QLabel(self)
         self.blue_label = QtGui.QLabel(self)
+        self.illuminance_label = QtGui.QLabel(self)
         self.messages_to_user = QtGui.QLabel(self)
         
         #########################
@@ -86,6 +86,9 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         grid_layout.addWidget(self.green_label, 9, 10, 1, 1)
         grid_layout.addWidget(self.blue_label, 10, 10, 1, 1)
         grid_layout.addWidget(self.messages_to_user, 15,1,1,10)
+        grid_layout.addWidget(self.device_id_text, 0, 5, 1, 1)
+        grid_layout.addWidget(self.device_id_box, 0, 6, 1, 1)
+        grid_layout.addWidget(self.illuminance_label,11, 10, 1, 1)
         
         
         # Ajout du layout sur la fenêtre principale
@@ -109,10 +112,25 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         button_save.clicked.connect(self.savePicture)
         
         #################################
+        ### Définitions de constantes ###
+        #################################
+        
+        self.x_e = 0.3366
+        self.y_e = 0.1735
+        self.A_0 = -949.86315
+        self.A_1 = 6253.80338
+        self.t_1 = 0.92159
+        self.A_2 = 28.70599
+        self.t_2 = 0.20039
+        self.A_3 = 0.00004
+        self.t_3 = 0.07125
+        
+        #################################
         ### Afficher le GUI à l'écran ###
         #################################
         
         self.show()
+        
         
     #######################################################
     ############### DEFINITION DES METHODES ###############
@@ -121,17 +139,17 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
     def openWebcam(self):
         """ Open webcam through OpenCV.
         """
-    
+        
         try: # Vérifier si l'attribut webcam existe
             if self.webcam.isOpened():
                 self.printToUser("Webcam already connected.")
             else:
-                self.webcam = cv2.VideoCapture(0) # Créer un objet OpenCV
+                self.webcam = cv2.VideoCapture(self.device_id) # Créer un objet OpenCV
                 self.printToUser("Webcam connected.")
         except AttributeError:
-            self.webcam = cv2.VideoCapture(0)
+            self.webcam = cv2.VideoCapture(self.device_id)
             self.printToUser("Webcam connected.")
-       
+            
     def startStream(self):
         """ Begin webcam stream.
         """
@@ -209,35 +227,48 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         """
         
         # Affichage dans les boxes
-        self.red_label.setText("Mean RED: "+str(int(round(self.R))))
+        self.red_label.setText("Mean RED: "+str(int(round(self.R.mean()))))
         self.red_label.adjustSize()
-        self.green_label.setText("Mean GREEN: "+str(int(round(self.G))))
+        self.green_label.setText("Mean GREEN: "+str(int(round(self.G.mean()))))
         self.green_label.adjustSize()
-        self.blue_label.setText("Mean BLUE: "+str(int(round(self.B))))
+        self.blue_label.setText("Mean BLUE: "+str(int(round(self.B.mean()))))
         self.blue_label.adjustSize()
             
     def calculateTemperature(self):
         """ Calculate mean color temperature.
         """
         
-        # CIE space
-        X = (-0.14282)*self.R + (1.54924)*self.G + (-0.95641)*self.B
-        Y = (-0.32466)*self.R + (1.57837)*self.G + (-0.73191)*self.B
-        Z = (-0.68202)*self.R + (0.77073)*self.G + (0.56332)*self.B
+        # CIE XYZ space
+        self.X = (1/0.17697)*((0.49)*self.R + (0.31)*self.G + (0.2)*self.B)
+        self.Y = (1/0.17697)*((0.17697)*self.R + (0.81240)*self.G + (0.01063)*self.B)
+        self.Z = (1/0.17697)*((0)*self.R + (0.010)*self.G + (0.99)*self.B)
 
-        # Chromaticity
-        x = X/(X+Y+Z)
-        y = Y/(X+Y+Z)
+        # CIE Chromaticities xy
+        self.x = self.X/(self.X + self.Y + self.Z)
+        self.y = self.Y/(self.X + self.Y + self.Z)
         
-         # constant for McCamy's formula
-        n = (x - 0.3320) / (0.1858 - y)
+        # CIE Chromaticities uv
+        #self.u = (0.4661*self.x + 0.1593*self.y)/(self.y - 0.15735*self.x + 0.2424)
+        #self.v = (0.6581*self.y)/(self.y - 0.15735*self.x + 0.2424)
         
-        # Correlated color temperature according McCamy
-        self.color_temp = 449*(n**3) + 3525*(n**2) + 6823.3*n + 5520.33
+        # constant for McCamy's/Hernandez-Andrés formula
+        n = (self.x - self.x_e)/(self.y - self.y_e)
         
+        # Correlated color temperature according to Hernández-Andrés (1999)
+        self.color_temp = ( self.A_0 + 
+						   self.A_1*np.exp(-n/self.t_1) + 
+                           self.A_2*np.exp(-n/self.t_2) + 
+                           self.A_3*np.exp(-n/self.t_3) )
+        # Correlated color temperature according to McCamy (1992)
+        # self.color_temp = 449*(self.n**3) + 3525*(self.n**2) + 6823.3*self.n + 5520.33
+        
+        # Affichage de la CCT
         self.temp_label.setText("Temperature = "+str(int(round(self.color_temp)))+"K")
         self.temp_label.adjustSize()
     
+        # Affichage de l'illuminance (Y)
+        self.illuminance_label.setText("Illuminance = " + str(self.Y))
+        self.illuminance_label.adjustSize()
     
         
     def calculateHistogram(self):

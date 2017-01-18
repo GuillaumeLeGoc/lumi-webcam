@@ -9,7 +9,8 @@ Creating GUI
 """
 
 from __future__ import division
-
+from matplotlib import pyplot as plt
+from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 import sys
 import cv2
 import numpy as np
@@ -40,7 +41,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         # Layout en grille
         grid_layout = QtGui.QGridLayout()
         # Espace entre les widgets
-        grid_layout.setSpacing(8)
+        grid_layout.setSpacing(10)
         
         ############################
         ### Création des widgets ###
@@ -53,18 +54,22 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         button_stop = QtGui.QPushButton('Stop stream',self)
         
         # Device ID
-        self.device_id_text = QtGui.QLabel('Enter webcam device ID')
-        self.device_id_box = QtGui.QLineEdit('0', self)
-        self.device_id = int(self.device_id_box.text())
+        self.device_id_label = QtGui.QLabel('Enter webcam device ID')
+        self.device_id_text = QtGui.QLineEdit('0', self)
         
-        # webcam canvas
+        # Webcam canvas
         self.img_label = QtGui.QLabel(self)
         
-        # histogram canvas
+        # Histogram canvas (RGB)
         self.his_label = QtGui.QLabel(self)
         
+        # Temperature plot canvas with Matplotlib
+        self.temp_figure = plt.figure(figsize=(800,800))
+        self.temp_canvas = FigureCanvas(self.temp_figure)
+        
+        
         # Text boxes
-        self.temp_label = QtGui.QLabel(self)
+        self.mean_temp_label = QtGui.QLabel(self)
         self.red_label = QtGui.QLabel(self) # hips
         self.green_label = QtGui.QLabel(self)
         self.blue_label = QtGui.QLabel(self)
@@ -75,21 +80,30 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         ### Ajout des widgets ###
         #########################
         
+        # Boutons
         grid_layout.addWidget(button_connect, 0, 0, 1, 1)
         grid_layout.addWidget(button_start, 0, 1, 1, 1)
         grid_layout.addWidget(button_stop, 0, 2, 1, 1)
         grid_layout.addWidget(button_save, 0, 3, 1, 1)
-        grid_layout.addWidget(self.img_label, 1, 0, 9, 9)
-        grid_layout.addWidget(self.his_label, 2, 10, 5, 5)
-        grid_layout.addWidget(self.temp_label, 7, 10, 1, 1)
-        grid_layout.addWidget(self.red_label, 8, 10, 1, 1)
-        grid_layout.addWidget(self.green_label, 9, 10, 1, 1)
-        grid_layout.addWidget(self.blue_label, 10, 10, 1, 1)
-        grid_layout.addWidget(self.messages_to_user, 15,1,1,10)
-        grid_layout.addWidget(self.device_id_text, 0, 5, 1, 1)
-        grid_layout.addWidget(self.device_id_box, 0, 6, 1, 1)
-        grid_layout.addWidget(self.illuminance_label,11, 10, 1, 1)
         
+        # Text input pour ID de la caméra
+        grid_layout.addWidget(self.device_id_label, 0, 4, 1, 1)
+        grid_layout.addWidget(self.device_id_text, 0, 5, 1, 1)
+        
+        # Canvas pour l'image de la caméra, l'histogramme et températures
+        grid_layout.addWidget(self.img_label, 1, 0, 6, 6)
+        grid_layout.addWidget(self.his_label, 7, 0, 6, 6)
+        grid_layout.addWidget(self.temp_canvas, 2, 7, 10, 10)
+        
+        # Moyennes RGB et illuminance
+        grid_layout.addWidget(self.mean_temp_label, 14, 10, 1, 1)
+        grid_layout.addWidget(self.red_label, 15, 0, 1, 1)
+        grid_layout.addWidget(self.green_label, 16, 0, 1, 1)
+        grid_layout.addWidget(self.blue_label, 17, 0, 1, 1)
+        grid_layout.addWidget(self.illuminance_label,18, 0, 1, 1)
+        
+        # Verbose
+        grid_layout.addWidget(self.messages_to_user, 20,1,1,10)
         
         # Ajout du layout sur la fenêtre principale
         self.setLayout(grid_layout)
@@ -98,7 +112,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         ### Paramètres de l'interface ###
         #################################
         
-        self.setGeometry(300, 300, 800, 600) # x, y, W, H; move+resize method
+        self.setGeometry(300, 300, 1000, 800) # x, y, W, H
         self.setWindowTitle("Webcam Analyzer") # Titre de la fenêtre  
         self.setWindowIcon(QtGui.QIcon("webcam-512.png")) # Icone
         
@@ -140,27 +154,36 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         """ Open webcam through OpenCV.
         """
         
-        try: # Vérifier si l'attribut webcam existe
-            if self.webcam.isOpened():
-                self.printToUser("Webcam already connected.")
-            else:
-                self.webcam = cv2.VideoCapture(self.device_id) # Créer un objet OpenCV
-                self.printToUser("Webcam connected.")
-        except AttributeError:
-            self.webcam = cv2.VideoCapture(self.device_id)
-            self.printToUser("Webcam connected.")
-            
+        # Récupérer l'id de la caméra entré par l'utilisateur
+        self.device_id = int(self.device_id_text.text())
+        
+        # Prendre la main sur la webcam en créant un objet VideoCapture
+        self.webcam = cv2.VideoCapture(self.device_id)
+        
+        # Verbose
+        self.printToUser("Webcam #"+str(self.device_id)+" connected.")
+                 
     def startStream(self):
         """ Begin webcam stream.
         """
         
         try: # Vérifier si l'attribut existe, autrement prévenir l'utilisateur.
-            if self.webcam.isOpened(): # vérifie si la camera est bien connectée
-                self.isRead, self.webcam_frame = self.webcam.read() # tenter une 
-                # première capture
-                self.webcam_break_loop = False # initialiser le témoin de on/off
+            # vérifier si la camera est bien connectée
+            if self.webcam.isOpened():
+                # Acquérir la première image
+                self.isRead, self.webcam_frame = self.webcam.read()
+                
+                # initialiser le témoin de on/off
+                self.webcam_break_loop = False
+                
+                # Initialiser le témoin de calcul
+                self.indice = 0 
+                
+                # Verbose
                 self.printToUser("Starting stream.")
-                while self.isRead: # boucle pour streamer la webcam
+                
+                # Boucle pour streamer la webcam
+                while self.isRead: 
                     
                     # Récupère une frame de la webcam                
                     self.isRead, self.frame = self.webcam.read()
@@ -169,28 +192,61 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
                     self.frame_rgb = cv2.cvtColor(self.frame, 
                                                          cv2.COLOR_BGR2RGB)
                     
-                    # Calcul de la moyenne des niveaux de R,G,B
-                    self.averageRGB()
+                    # Faire l'analyse colorimétrique toutes les 20 images
+                    if self.indice == 5:
+                        
+                        # Calcul de la moyenne des niveaux de R,G,B
+                        self.averageRGB()
                     
-                    # Affichage des moyennes R, G, B
-                    self.showAverageRGB()
+                        # Affichage des moyennes R, G, B
+                        self.showAverageRGB()
                     
-                    # Calcul et affichage de la température de couleurs
-                    self.calculateTemperature()
+                        # Calcul de la température de couleurs
+                        self.calculateTemperature()
+                        
+                        ## Affichage de l'image en température avec PyPlot
+                        # Effacer la figure précédente
+                        self.temp_figure.clear()
+                        # Prendre la main sur les axes de la figure
+                        temp_figure_gca = self.temp_figure.gca()
+                        # Cacher les axes
+                        temp_figure_gca.get_xaxis().set_visible(False)
+                        temp_figure_gca.get_yaxis().set_visible(False)
+                        # Afficher l'image
+                        plt.imshow(self.color_temp, vmin=0, vmax=25000)
+                        # Afficher la colorbar
+                        plt.colorbar()
+                        # Ajouter le graphique au canvas
+                        self.temp_canvas.draw_idle()
+                        
+                        # Calcul de l'histogramme des niveaux RGB
+                        self.calculateHistogram()
                     
-                    # Calcul de l'histogramme
-                    self.calculateHistogram()
+                        # Affichage de l'histogramme des niveaux RGB
+                        self.his_label.setPixmap(self.histplot_qpix)
+                        self.his_label.adjustSize()
+                        
+                        # Réinitialiser l'indice
+                        self.indice = 0
+                        
+                    else:
+                        # Ne rien faire
+                        pass
                     
                     # Conversion de l'image OpenCV en image QImage
                     self.frame_qpix = self.convertToQPixelmap(self.frame_rgb)
                     
-                    # Affichage de l'image sur le canvas du GUI
-                    self.img_label.setPixmap(self.frame_qpix)
+                    self.frame_qpix = self.frame_qpix.scaledToWidth(400)
                     
-                    # Affichage de l'histogramme
-                    self.his_label.setPixmap(self.histplot_qpix)
-                                                                    
-                    cv2.waitKey(20) # laisser le temps d'appuyer sur "stop"
+                    # Affichage de l'image sur le canvas du GUI
+                    self.img_label.setPixmap(self.frame_qpix)    
+                    
+                    # Incrémenter l'indice de calcul
+                    self.indice += 1
+                    
+                    # Attendre 20ms pour avoir le temps d'appuyer sur "Stop"
+                    cv2.waitKey(20)
+                    
                     if self.webcam_break_loop:
                         self.printToUser("Streaming stopped.")
                         break
@@ -218,9 +274,9 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         
         # Calcul des moyennes
         self.R, self.G, self.B = cv2.split(self.frame_rgb)
-        self.R = self.R.mean()
-        self.G = self.G.mean()
-        self.B = self.B.mean()
+        #self.R = self.R.mean()
+        #self.G = self.G.mean()
+        #self.B = self.B.mean()
     
     def showAverageRGB(self):
         """ Shows mean values of RGB channels next to the frame from the webcam.
@@ -256,18 +312,22 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         
         # Correlated color temperature according to Hernández-Andrés (1999)
         self.color_temp = ( self.A_0 + 
-						   self.A_1*np.exp(-n/self.t_1) + 
+                           self.A_1*np.exp(-n/self.t_1) + 
                            self.A_2*np.exp(-n/self.t_2) + 
                            self.A_3*np.exp(-n/self.t_3) )
+        
+        # Delete too high values
+        self.color_temp[self.color_temp > 30000] = 0
+                
         # Correlated color temperature according to McCamy (1992)
         # self.color_temp = 449*(self.n**3) + 3525*(self.n**2) + 6823.3*self.n + 5520.33
         
         # Affichage de la CCT
-        self.temp_label.setText("Temperature = "+str(int(round(self.color_temp)))+"K")
-        self.temp_label.adjustSize()
-    
+        self.mean_temp_label.setText("Temperature moyenne = "+str(int(round(self.color_temp.mean())))+"K")
+        self.mean_temp_label.adjustSize()
+    	
         # Affichage de l'illuminance (Y)
-        self.illuminance_label.setText("Illuminance = " + str(self.Y))
+        self.illuminance_label.setText("Illuminance moyenne = " + str(int(round((self.Y.mean())))))
         self.illuminance_label.adjustSize()
     
         
@@ -278,7 +338,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         # Define color map
         colors = [ (255,0,0),(0,255,0),(0,0,255) ]
         # Define empty image to plot histogram in
-        plot_to_fill = np.zeros((300,300,3))
+        plot_to_fill = np.zeros((280,400,3))
         # Define bins of the histogram
         bins = np.arange(256).reshape(256,1)
         
@@ -305,14 +365,22 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         """
         
         # Conversion en image QImage
-        frame_qimg = QtGui.QImage(imgToConvert.data, 
+        if ( len(imgToConvert.shape) == 3 ):
+            img_qimg = QtGui.QImage(imgToConvert.data, 
                                     imgToConvert.shape[1], 
                                     imgToConvert.shape[0],
                                     imgToConvert.strides[0],
                                     QtGui.QImage.Format_RGB888)
+        else:
+			img_qimg = QtGui.QImage(imgToConvert.data, 
+                                    imgToConvert.shape[1], 
+                                    imgToConvert.shape[0],
+                                    imgToConvert.strides[0],
+                                    QtGui.QImage.Format_Indexed8)
+			
         
         # Conversion en image QPixmap pour l'afficher
-        return QtGui.QPixmap.fromImage(frame_qimg)
+        return QtGui.QPixmap.fromImage(img_qimg)
         
     def savePicture(self):
         """ Save last frame as png picture.
@@ -339,5 +407,5 @@ def main():
     sys.exit(qtapp.exec_())
     
 if __name__ == '__main__':
-    main() 
+    main()
     

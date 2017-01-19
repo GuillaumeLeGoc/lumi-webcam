@@ -9,8 +9,7 @@ Creating GUI
 """
 
 from __future__ import division
-from matplotlib import pyplot as plt
-from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
+import pyqtgraph as pg
 import sys
 import cv2
 import numpy as np
@@ -64,10 +63,8 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         # Histogram canvas (RGB)
         self.his_label = QtGui.QLabel(self)
         
-        # Temperature plot canvas with Matplotlib
-        self.temp_figure = plt.figure(figsize=(800,800))
-        self.temp_canvas = FigureCanvas(self.temp_figure)
-        
+        # Temperature plot with PyQtGraph
+        self.temp_canvas = pg.ImageView()
         
         # Text boxes
         self.mean_temp_label = QtGui.QLabel(self)
@@ -94,14 +91,14 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         # Canvas pour l'image de la caméra, l'histogramme et températures
         grid_layout.addWidget(self.img_label, 1, 0, 6, 6)
         grid_layout.addWidget(self.his_label, 7, 0, 6, 6)
-        grid_layout.addWidget(self.temp_canvas, 2, 7, 10, 10)
+        grid_layout.addWidget(self.temp_canvas, 2, 7, 15, 70)
         
         # Moyennes RGB et illuminance
         grid_layout.addWidget(self.mean_temp_label, 14, 10, 1, 1)
         grid_layout.addWidget(self.red_label, 15, 0, 1, 1)
         grid_layout.addWidget(self.green_label, 16, 0, 1, 1)
         grid_layout.addWidget(self.blue_label, 17, 0, 1, 1)
-        grid_layout.addWidget(self.illuminance_label,18, 0, 1, 1)
+        grid_layout.addWidget(self.illuminance_label, 18, 0, 1, 1)
         
         # Verbose
         grid_layout.addWidget(self.messages_to_user, 20,1,1,10)
@@ -193,11 +190,11 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
                     self.frame_rgb = cv2.cvtColor(self.frame, 
                                                          cv2.COLOR_BGR2RGB)
                     
-                    # Faire l'analyse colorimétrique toutes les 20 images
-                    if self.indice == 5:
+                    # Faire l'analyse colorimétrique toutes les 2 images
+                    if self.indice == 2:
                         
                         # Calcul de la moyenne des niveaux de R,G,B
-                        self.averageRGB()
+                        self.splitRGB()
                     
                         # Affichage des moyennes R, G, B
                         self.showAverageRGB()
@@ -207,18 +204,11 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
                         
                         ## Affichage de l'image en température avec PyPlot
                         # Effacer la figure précédente
-                        self.temp_figure.clear()
-                        # Prendre la main sur les axes de la figure
-                        temp_figure_gca = self.temp_figure.gca()
-                        # Cacher les axes
-                        temp_figure_gca.get_xaxis().set_visible(False)
-                        temp_figure_gca.get_yaxis().set_visible(False)
-                        # Afficher l'image
-                        plt.imshow(self.color_temp, vmin=0, vmax=10000)
-                        # Afficher la colorbar
-                        plt.colorbar()
-                        # Ajouter le graphique au canvas
-                        self.temp_canvas.draw_idle()
+                        self.temp_canvas.setImage(self.color_temp.transpose(),
+                                                  levels=(0,10000),
+                                                  autoLevels=False,
+                                                  autoRange=False,
+                                                  autoHistogramRange=False)
                         
                         # Calcul de l'histogramme des niveaux RGB
                         self.calculateHistogram()
@@ -269,15 +259,11 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         except AttributeError:
             self.printToUser("Stream not running.")
             
-    def averageRGB(self):
-        """Get the mean Red, Green and Blue in webcame frame.
+    def splitRGB(self):
+        """Split RGB matrices.
         """
         
-        # Calcul des moyennes
         self.R, self.G, self.B = cv2.split(self.frame_rgb)
-        #self.R = self.R.mean()
-        #self.G = self.G.mean()
-        #self.B = self.B.mean()
     
     def showAverageRGB(self):
         """ Shows mean values of RGB channels next to the frame from the webcam.
@@ -321,11 +307,13 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         self.color_temp[self.color_temp > 30000] = 0
         
         # Affichage de la CCT
-        self.mean_temp_label.setText("Temperature moyenne = "+str(int(round(self.color_temp.mean())))+"K")
+        self.mean_temp = int(round(self.color_temp.mean()))
+        self.mean_temp_label.setText("Temperature moyenne = "+str(self.mean_temp))
         self.mean_temp_label.adjustSize()
     	
         # Affichage de l'illuminance (Y)
-        self.illuminance_label.setText("Illuminance moyenne = " + str(int(round((self.Y.mean())))))
+        self.mean_illu = int(round((self.Y.mean())))
+        self.illuminance_label.setText("Illuminance moyenne = "+str(self.mean_illu))
         self.illuminance_label.adjustSize()
     
         

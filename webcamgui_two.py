@@ -1,21 +1,22 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """
-Created on Sun Jan 15 10:30:06 2017
+Created on Wed Jan 18 18:22:18 2017
 
-Creating GUI
+EN CHANTIER:
+    Il faut dissocier quelles fonctions vont dans WebcamGui et lesquelles vont
+    dans WebcamDriver.
 
 @author: pvkh
 """
 
 from __future__ import division
-from matplotlib import pyplot as plt
-from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 import sys
 import cv2
 import numpy as np
+from matplotlib import pyplot as plt
+from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from PyQt4 import QtGui
-
 
 class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
     """ Cette classe gère l'interface graphique principale qui affiche l'entrée
@@ -28,6 +29,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         # __init__ du parent
         super(WebcamGui, self).__init__()
         
+        self.driver = WebcamDriver()
         self.initWindow()
         
     def initWindow(self):
@@ -66,7 +68,6 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         # Temperature plot canvas with Matplotlib
         self.temp_figure = plt.figure(figsize=(800,800))
         self.temp_canvas = FigureCanvas(self.temp_figure)
-        
         
         # Text boxes
         self.mean_temp_label = QtGui.QLabel(self)
@@ -120,36 +121,20 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         ### Fonctions connectées aux boutons ###
         ########################################
         
-        button_connect.clicked.connect(self.openWebcam)
-        button_start.clicked.connect(self.startStream)
-        button_stop.clicked.connect(self.stopStream)
-        button_save.clicked.connect(self.savePicture)
+        button_connect.clicked.connect(self.driver.openWebcam)
+        button_start.clicked.connect(self.driver.startStream)
+        button_stop.clicked.connect(self.driver.stopStream)
+        button_save.clicked.connect(self.driver.savePicture)
         
-        #################################
-        ### Définitions de constantes ###
-        #################################
-        
-        self.x_e = 0.3366
-        self.y_e = 0.1735
-        self.A_0 = -949.86315
-        self.A_1 = 6253.80338
-        self.t_1 = 0.92159
-        self.A_2 = 28.70599
-        self.t_2 = 0.20039
-        self.A_3 = 0.00004
-        self.t_3 = 0.07125
-        
-        #################################
-        ### Afficher le GUI à l'écran ###
-        #################################
+        ##################################
+        ### Affichage du GUI à l'écran ###
+        ##################################
         
         self.show()
         
+###############################################################################
         
-    #######################################################
-    ############### DEFINITION DES METHODES ###############
-    #######################################################
-    
+class WebcamDriver():
     def openWebcam(self):
         """ Open webcam through OpenCV.
         """
@@ -213,7 +198,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
                         temp_figure_gca.get_xaxis().set_visible(False)
                         temp_figure_gca.get_yaxis().set_visible(False)
                         # Afficher l'image
-                        plt.imshow(self.color_temp, vmin=0, vmax=25000)
+                        plt.imshow(self.color_temp, vmin=0, vmax=10000)
                         # Afficher la colorbar
                         plt.colorbar()
                         # Ajouter le graphique au canvas
@@ -318,9 +303,6 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         
         # Delete too high values
         self.color_temp[self.color_temp > 30000] = 0
-                
-        # Correlated color temperature according to McCamy (1992)
-        # self.color_temp = 449*(self.n**3) + 3525*(self.n**2) + 6823.3*self.n + 5520.33
         
         # Affichage de la CCT
         self.mean_temp_label.setText("Temperature moyenne = "+str(int(round(self.color_temp.mean())))+"K")
@@ -396,11 +378,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         self.messages_to_user.setText(message)
         self.messages_to_user.adjustSize()
         
-        
 ###############################################################################
-
-# Utilisation en dehors de Spyder
-
 def main():
     qtapp = QtGui.QApplication(sys.argv)
     gui = WebcamGui()
@@ -408,4 +386,3 @@ def main():
     
 if __name__ == '__main__':
     main()
-    

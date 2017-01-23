@@ -14,10 +14,9 @@ import sys
 import cv2
 import numpy as np
 from PyQt4 import QtGui
-from PyQt4 import QtCore
 
 
-class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
+class WebcamGui(QtGui.QWidget):
     """ Cette classe gère l'interface graphique principale qui affiche l'entrée
     d'une webcam et analyse les composantes RGB ainsi que la luminosité et la
     température. Elle contient des fonctions utilisant la bibliothèque OpenCV.
@@ -34,7 +33,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         """ Creates the main window, adds widgets and connect them to methods
         """
         
-        ##############################
+        #%%###########################
         ### Création de la fenêtre ###
         ##############################
         
@@ -43,7 +42,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         # Espace entre les widgets
         grid_layout.setSpacing(10)
         
-        ############################
+        #%%#########################
         ### Création des widgets ###
         ############################
         
@@ -74,7 +73,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         self.illuminance_label = QtGui.QLabel(self)
         self.messages_to_user = QtGui.QLabel(self)
         
-        #########################
+        #%%######################
         ### Ajout des widgets ###
         #########################
         
@@ -91,7 +90,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         # Canvas pour l'image de la caméra, l'histogramme et températures
         grid_layout.addWidget(self.img_label, 1, 0, 6, 6)
         grid_layout.addWidget(self.his_label, 7, 0, 6, 6)
-        grid_layout.addWidget(self.temp_canvas, 2, 7, 15, 70)
+        grid_layout.addWidget(self.temp_canvas, 1, 3, 15, 25)
         
         # Moyennes RGB et illuminance
         grid_layout.addWidget(self.mean_temp_label, 14, 10, 1, 1)
@@ -106,7 +105,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         # Ajout du layout sur la fenêtre principale
         self.setLayout(grid_layout)
         
-        #################################
+        #%%##############################
         ### Paramètres de l'interface ###
         #################################
         
@@ -114,7 +113,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         self.setWindowTitle("Webcam Analyzer") # Titre de la fenêtre  
         self.setWindowIcon(QtGui.QIcon("webcam-512.png")) # Icone
         
-        ########################################
+        #%%#####################################
         ### Fonctions connectées aux boutons ###
         ########################################
         
@@ -123,7 +122,7 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         button_stop.clicked.connect(self.stopStream)
         button_save.clicked.connect(self.savePicture)
         
-        #################################
+        #%%##############################
         ### Définitions de constantes ###
         #################################
         
@@ -137,14 +136,14 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         self.A_3 = 0.00004
         self.t_3 = 0.07125
         
-        #################################
+        #%%##############################
         ### Afficher le GUI à l'écran ###
         #################################
         
         self.show()
         
         
-    #######################################################
+    #%%####################################################
     ############### DEFINITION DES METHODES ###############
     #######################################################
     
@@ -394,4 +393,3 @@ def main():
     
 if __name__ == '__main__':
     main()
-    

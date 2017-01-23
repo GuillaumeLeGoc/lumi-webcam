@@ -1,56 +1,180 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """
-Created on Wed Jan 18 18:22:18 2017
+Created on Mon Jan 23 10:40:56 2017
 
-EN CHANTIER:
-    Il faut dissocier quelles fonctions vont dans WebcamGui et lesquelles vont
-    dans WebcamDriver.
+Attempt to get two classes, one for the GUI and one for the driver.
 
 @author: pvkh
 """
 
+# import libraries
 from __future__ import division
+import pyqtgraph as pg
 import sys
 import cv2
 import numpy as np
-from matplotlib import pyplot as plt
-from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from PyQt4 import QtGui
 
-class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
-    """ Cette classe gère l'interface graphique principale qui affiche l'entrée
-    d'une webcam et analyse les composantes RGB ainsi que la luminosité et la
-    température. Elle contient des fonctions utilisant la bibliothèque OpenCV.
+#%%############################################################################
+###############################################################################
+
+class WebcamDriver():
+    """ This class contains functions which drive the webcam through OpenCV.
+    It allows the user to take snapshots with the webcam and analyze the
+    the picture: color temperature, RGB content.
     """
     
     def __init__(self):
+        """
+        """
         
-        # __init__ du parent
+        # Constants definition
+        self.x_e = 0.3366
+        self.y_e = 0.1735
+        self.A_0 = -949.86315
+        self.A_1 = 6253.80338
+        self.t_1 = 0.92159
+        self.A_2 = 28.70599
+        self.t_2 = 0.20039
+        self.A_3 = 0.00004
+        self.t_3 = 0.07125
+        
+    def openWebcam(self):
+        """ This function connects the webcam with OpenCV.
+        """
+        
+        # Connect the webcam with OpenCV
+        self.webcam = cv2.VideoCapture(self.device_id)
+        
+    def takeFrame(self):
+        """ This function takes a snapshot with the webcam and convert it to
+        RGB.
+        """
+        
+        # Take a snapshot with the webcam
+        self.isRead, self.frame = self.webcam.read()
+        
+        # OpenCV conversion to RGB from BGR
+        self.frame_rgb = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
+        
+    def rgbLevels(self):
+        """ This functions converts a BGR picture to RGB picture, splits the
+        three channels into single ones and calculate RGB levels and means.
+        """
+        
+        # Split RGB channels
+        self.R, self.G, self.B = cv2.split(self.frame_rgb)
+        
+        # Compute RGB means
+        self.R_mean = int(round( self.R.mean() ))
+        self.G_mean = int(round( self.G.mean() ))
+        self.B_mean = int(round( self.B.mean() ))
+        
+    def cieXYZ(self):
+        """ This function converts the picture from RGB color space to 
+        CIE XYZ tristimulus color space through the transformation matrix.
+        """
+        
+        # Denominator of the transformation matrix
+        den = (1/0.17697)
+        
+        # Transformation matrix
+        self.X = den*((0.49)*self.R + (0.31)*self.G + (0.2)*self.B)
+        self.Y = den*((0.17697)*self.R + (0.8124)*self.G + (0.01063)*self.B)
+        self.Z = den*((0)*self.R + (0.010)*self.G + (0.99)*self.B)
+        
+        # Y corresponds to the illuminance
+        self.illuminance_mean = int(round( self.Y.mean() ))
+        
+    def ciexy(self):
+        """ This function converts the picture from CIE XYZ color space to the
+        chromaticities xy.
+        """
+        
+        self.x = self.X/(self.X + self.Y + self.Z)
+        self.y = self.Y/(self.X + self.Y + self.Z)
+        
+    def cctAnalysis(self):
+        """ This function calculates the correlated color temperature (CCT) of
+        each pixel of the frame. It is estimated with the Hernandez-Andrés (HA)
+        formula.
+        """
+        
+        # McCamy's parameter to evaluate CCT
+        self.n_HA = (self.x - self.x_e)/(self.y - self.y_e)
+        
+        # HA formula
+        self.cct = ( self.A_0 + self.A_1*np.exp(-self.n_HA/self.t_1) + 
+                                self.A_2*np.exp(-self.n_HA/self.t_2) + 
+                                self.A_3*np.exp(-self.n_HA/self.t_3) )
+        
+        # Delete too high values
+        self.cct[self.cct > 30000] = 0
+        
+        # Compute CCT mean
+        self.cct_mean = int(round( self.cct.mean() ))
+    
+    def rgbHistogram(self):
+        """ This function calculates the histogram for RGB pixels values
+        distribution.
+        """
+        
+        # Define color map
+        colors = [ (255,0,0),(0,255,0),(0,0,255) ]
+        # Define empty image to plot histogram in
+        plot_to_fill = np.zeros((280,400,3))
+        # Define bins of the histogram
+        bins = np.arange(256).reshape(256,1)
+        
+        # Loop on RGB channels
+        for channel, color in enumerate(colors):
+            # Make the histogram
+            hist_item = cv2.calcHist(self.frame,[channel],None,[256],[0,256])
+            
+            # Normalisation
+            cv2.normalize(hist_item,hist_item,0,255,cv2.NORM_MINMAX)
+            
+            # Draw the histogram as a picture
+            hist = np.int32(np.around(hist_item))
+            pts = np.int32(np.column_stack((bins, hist)))
+            cv2.polylines(plot_to_fill, [pts], False, color)
+        
+        # Flip and convert tot iunt8
+        self.rgb_histo = np.flipud(plot_to_fill)
+        self.rgb_histo = np.uint8(self.rgb_histo)
+        
+#%%############################################################################
+###############################################################################
+
+class WebcamGui(QtGui.QWidget):
+    """ This class uses WebcamDriver class and embed its function in Qt graphic
+    user interface (GUI).
+    """
+    
+    def __init__(self):
+        """
+        """
+        
         super(WebcamGui, self).__init__()
         
+        # Call WebcamDriver
         self.driver = WebcamDriver()
+        
+        # Call the gui initialization
         self.initWindow()
         
     def initWindow(self):
-        """ Creates the main window, adds widgets and connect them to methods
+        """ Creates the main window, adds widgets and connect them to methods.
         """
-        
-        ##############################
-        ### Création de la fenêtre ###
-        ##############################
-        
-        # Layout en grille
+
+        # Initialize a grid layout
         grid_layout = QtGui.QGridLayout()
-        # Espace entre les widgets
+        # Defince space between widgets
         grid_layout.setSpacing(10)
         
-        ############################
-        ### Création des widgets ###
-        ############################
-        
-        # Boutons
-        button_connect = QtGui.QPushButton('Connect webcam', self)
+        # Create buttons
+        button_connect = QtGui.QPushButton('Connect/Disconnect webcam', self)
         button_save = QtGui.QPushButton('Save as picture', self)
         button_start = QtGui.QPushButton('Start stream',self)
         button_stop = QtGui.QPushButton('Stop stream',self)
@@ -60,28 +184,23 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         self.device_id_text = QtGui.QLineEdit('0', self)
         
         # Webcam canvas
-        self.img_label = QtGui.QLabel(self)
+        self.snap_canvas = pg.ImageView()
         
         # Histogram canvas (RGB)
-        self.his_label = QtGui.QLabel(self)
+        #self.hist_canvas = pg.ImageView()
         
-        # Temperature plot canvas with Matplotlib
-        self.temp_figure = plt.figure(figsize=(800,800))
-        self.temp_canvas = FigureCanvas(self.temp_figure)
+        # Temperature canvas
+        self.temp_canvas = pg.ImageView()
         
         # Text boxes
-        self.mean_temp_label = QtGui.QLabel(self)
+        self.cct_label = QtGui.QLabel(self)
         self.red_label = QtGui.QLabel(self) # hips
         self.green_label = QtGui.QLabel(self)
         self.blue_label = QtGui.QLabel(self)
         self.illuminance_label = QtGui.QLabel(self)
         self.messages_to_user = QtGui.QLabel(self)
-        
-        #########################
-        ### Ajout des widgets ###
-        #########################
-        
-        # Boutons
+                
+        # Add buttons to the layout
         grid_layout.addWidget(button_connect, 0, 0, 1, 1)
         grid_layout.addWidget(button_start, 0, 1, 1, 1)
         grid_layout.addWidget(button_stop, 0, 2, 1, 1)
@@ -91,17 +210,16 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         grid_layout.addWidget(self.device_id_label, 0, 4, 1, 1)
         grid_layout.addWidget(self.device_id_text, 0, 5, 1, 1)
         
-        # Canvas pour l'image de la caméra, l'histogramme et températures
-        grid_layout.addWidget(self.img_label, 1, 0, 6, 6)
-        grid_layout.addWidget(self.his_label, 7, 0, 6, 6)
-        grid_layout.addWidget(self.temp_canvas, 2, 7, 10, 10)
+        # Canvas pour l'image de la caméra et températures
+        grid_layout.addWidget(self.snap_canvas, 1, 0, 1, 1)
+        grid_layout.addWidget(self.temp_canvas, 1, 2, 1, 5)
         
         # Moyennes RGB et illuminance
-        grid_layout.addWidget(self.mean_temp_label, 14, 10, 1, 1)
+        grid_layout.addWidget(self.cct_label, 14, 2, 1, 1)
         grid_layout.addWidget(self.red_label, 15, 0, 1, 1)
         grid_layout.addWidget(self.green_label, 16, 0, 1, 1)
         grid_layout.addWidget(self.blue_label, 17, 0, 1, 1)
-        grid_layout.addWidget(self.illuminance_label,18, 0, 1, 1)
+        grid_layout.addWidget(self.illuminance_label, 18, 0, 1, 1)
         
         # Verbose
         grid_layout.addWidget(self.messages_to_user, 20,1,1,10)
@@ -109,127 +227,138 @@ class WebcamGui(QtGui.QWidget): # création de la classe héritant de QWidget
         # Ajout du layout sur la fenêtre principale
         self.setLayout(grid_layout)
         
-        #################################
-        ### Paramètres de l'interface ###
-        #################################
-        
+        # Shape of the window        
         self.setGeometry(300, 300, 1000, 800) # x, y, W, H
         self.setWindowTitle("Webcam Analyzer") # Titre de la fenêtre  
         self.setWindowIcon(QtGui.QIcon("webcam-512.png")) # Icone
         
-        ########################################
-        ### Fonctions connectées aux boutons ###
-        ########################################
+        # Connect buttons to functions        
+        button_connect.clicked.connect(self.openWebcam)
+        button_start.clicked.connect(self.startStream)
+        button_stop.clicked.connect(self.stopStream)
+        button_save.clicked.connect(self.savePicture)
         
-        button_connect.clicked.connect(self.driver.openWebcam)
-        button_start.clicked.connect(self.driver.startStream)
-        button_stop.clicked.connect(self.driver.stopStream)
-        button_save.clicked.connect(self.driver.savePicture)
-        
-        ##################################
-        ### Affichage du GUI à l'écran ###
-        ##################################
-        
+        # Display the gui on the screen
         self.show()
         
-###############################################################################
-        
-class WebcamDriver():
-    def openWebcam(self):
-        """ Open webcam through OpenCV.
+    def printToUser(self, message):
+        """ This function displays information to the user directly within the
+        GUI window.
         """
         
-        # Récupérer l'id de la caméra entré par l'utilisateur
-        self.device_id = int(self.device_id_text.text())
+        self.messages_to_user.setText(message)
+        self.messages_to_user.adjustSize()
         
-        # Prendre la main sur la webcam en créant un objet VideoCapture
-        self.webcam = cv2.VideoCapture(self.device_id)
+        
+    def openWebcam(self):
+        """ This function calls WebcamDriver openWebcam method and passes it
+        the webcam device ID.
+        """
+        
+        # Get the webcam device ID from the input text box
+        self.driver.device_id = int(self.device_id_text.text())
+        
+        # Call WebcamDriver openWebcam method
+        self.driver.openWebcam()
         
         # Verbose
-        self.printToUser("Webcam #"+str(self.device_id)+" connected.")
-                 
+        self.printToUser("Webcam #"+str(self.driver.device_id)+" connected.")
+        
     def startStream(self):
-        """ Begin webcam stream.
+        """ This function streams frames from the webcam to the GUI window by
+        calling WebcamDriver takeFrame method in a loop.
         """
         
-        try: # Vérifier si l'attribut existe, autrement prévenir l'utilisateur.
-            # vérifier si la camera est bien connectée
-            if self.webcam.isOpened():
-                # Acquérir la première image
-                self.isRead, self.webcam_frame = self.webcam.read()
+        try:
+            # Check if the webcam is connected
+            if self.driver.webcam.isOpened():
                 
-                # initialiser le témoin de on/off
+                # Get the first frame
+                self.driver.takeFrame()
+                
+                # Initialize the play/stop indicator
                 self.webcam_break_loop = False
                 
-                # Initialiser le témoin de calcul
+                # Initialize the calculation indicator
                 self.indice = 0 
                 
                 # Verbose
                 self.printToUser("Starting stream.")
                 
-                # Boucle pour streamer la webcam
-                while self.isRead: 
+                # Active loop if webcam still active
+                while self.driver.isRead: 
                     
-                    # Récupère une frame de la webcam                
-                    self.isRead, self.frame = self.webcam.read()
+                    # Record a frame from the webcam               
+                    self.driver.takeFrame()
                     
-                    # Conversion BGR > RGB
-                    self.frame_rgb = cv2.cvtColor(self.frame, 
-                                                         cv2.COLOR_BGR2RGB)
+                    # Display webcam frame
+                    self.snap_canvas.setImage(self.driver.frame_rgb.transpose(
+                                                                [1,0,2]),
+                                                
+                                              )
+                    # Hide histogram
+                    self.snap_canvas.ui.histogram.hide()
+                    self.snap_canvas.ui.menuBtn.hide()
+                    self.snap_canvas.ui.roiBtn.hide()
                     
-                    # Faire l'analyse colorimétrique toutes les 20 images
-                    if self.indice == 5:
+
+                    # Make the RGB levels analysis anc CCT calculation once in
+                    # 2 pictures
+                    if self.indice == 2:
                         
-                        # Calcul de la moyenne des niveaux de R,G,B
-                        self.averageRGB()
-                    
-                        # Affichage des moyennes R, G, B
-                        self.showAverageRGB()
-                    
-                        # Calcul de la température de couleurs
-                        self.calculateTemperature()
+                        # RGB levels analysis
+                        self.driver.rgbLevels()
                         
-                        ## Affichage de l'image en température avec PyPlot
-                        # Effacer la figure précédente
-                        self.temp_figure.clear()
-                        # Prendre la main sur les axes de la figure
-                        temp_figure_gca = self.temp_figure.gca()
-                        # Cacher les axes
-                        temp_figure_gca.get_xaxis().set_visible(False)
-                        temp_figure_gca.get_yaxis().set_visible(False)
-                        # Afficher l'image
-                        plt.imshow(self.color_temp, vmin=0, vmax=10000)
-                        # Afficher la colorbar
-                        plt.colorbar()
-                        # Ajouter le graphique au canvas
-                        self.temp_canvas.draw_idle()
+                        # Display RGB means
+                        self.red_label.setText("Mean RED: "+str(
+                                                        self.driver.R_mean))
+                        self.red_label.adjustSize()
+                        self.green_label.setText("Mean GREEN: "+str(
+                                                        self.driver.G_mean))
+                        self.green_label.adjustSize()
+                        self.blue_label.setText("Mean BLUE: "+str(
+                                                        self.driver.B_mean))
+                        self.blue_label.adjustSize()
                         
-                        # Calcul de l'histogramme des niveaux RGB
-                        self.calculateHistogram()
+                        # Calculate the rgb levels distribution histogram
+                        #self.driver.rgbHistogram()
+                        
+                        # Calculate picture in CIE XYZ color space
+                        self.driver.cieXYZ()
+                        
+                        # Caclulate picture in CIE xy chomaticities
+                        self.driver.ciexy()
                     
-                        # Affichage de l'histogramme des niveaux RGB
-                        self.his_label.setPixmap(self.histplot_qpix)
-                        self.his_label.adjustSize()
+                        # Calculate CCT
+                        self.driver.cctAnalysis()
+                        
+                        # Display CCT mean value and mean illuminance
+                        self.cct_label.setText("Mean color temperature: "+
+                                               str(self.driver.cct_mean))
+                        self.cct_label.adjustSize()
+                        self.illuminance_label.setText("Mean illuminance: "+
+                                                str(
+                                                self.driver.illuminance_mean))
+                        self.illuminance_label.adjustSize()
+                        
+                        # Display CCT map
+                        self.temp_canvas.setImage(self.driver.cct.transpose(),
+                                                  levels=(0,15000))
+                        self.temp_canvas.ui.menuBtn.hide()
+                        self.temp_canvas.ui.histogram.setHistogramRange(
+                                                                    0, 15000)
                         
                         # Réinitialiser l'indice
                         self.indice = 0
                         
                     else:
-                        # Ne rien faire
+                        # Don't make any calculation
                         pass
-                    
-                    # Conversion de l'image OpenCV en image QImage
-                    self.frame_qpix = self.convertToQPixelmap(self.frame_rgb)
-                    
-                    self.frame_qpix = self.frame_qpix.scaledToWidth(400)
-                    
-                    # Affichage de l'image sur le canvas du GUI
-                    self.img_label.setPixmap(self.frame_qpix)    
-                    
-                    # Incrémenter l'indice de calcul
+
+                    # Increment calculation indicator
                     self.indice += 1
                     
-                    # Attendre 20ms pour avoir le temps d'appuyer sur "Stop"
+                    # Wait 20 ms
                     cv2.waitKey(20)
                     
                     if self.webcam_break_loop:
@@ -239,9 +368,9 @@ class WebcamDriver():
                 self.printToUser("Connect webcam first...")
         except AttributeError:
             self.printToUser("Connect webcam first.")
-
+            
     def stopStream(self):
-        """ Stop webcam stream.
+        """ This function pauses the webcam stream.
         """
         
         try:
@@ -253,136 +382,24 @@ class WebcamDriver():
         except AttributeError:
             self.printToUser("Stream not running.")
             
-    def averageRGB(self):
-        """Get the mean Red, Green and Blue in webcame frame.
-        """
-        
-        # Calcul des moyennes
-        self.R, self.G, self.B = cv2.split(self.frame_rgb)
-        #self.R = self.R.mean()
-        #self.G = self.G.mean()
-        #self.B = self.B.mean()
-    
-    def showAverageRGB(self):
-        """ Shows mean values of RGB channels next to the frame from the webcam.
-        """
-        
-        # Affichage dans les boxes
-        self.red_label.setText("Mean RED: "+str(int(round(self.R.mean()))))
-        self.red_label.adjustSize()
-        self.green_label.setText("Mean GREEN: "+str(int(round(self.G.mean()))))
-        self.green_label.adjustSize()
-        self.blue_label.setText("Mean BLUE: "+str(int(round(self.B.mean()))))
-        self.blue_label.adjustSize()
-            
-    def calculateTemperature(self):
-        """ Calculate mean color temperature.
-        """
-        
-        # CIE XYZ space
-        self.X = (1/0.17697)*((0.49)*self.R + (0.31)*self.G + (0.2)*self.B)
-        self.Y = (1/0.17697)*((0.17697)*self.R + (0.81240)*self.G + (0.01063)*self.B)
-        self.Z = (1/0.17697)*((0)*self.R + (0.010)*self.G + (0.99)*self.B)
-
-        # CIE Chromaticities xy
-        self.x = self.X/(self.X + self.Y + self.Z)
-        self.y = self.Y/(self.X + self.Y + self.Z)
-        
-        # CIE Chromaticities uv
-        #self.u = (0.4661*self.x + 0.1593*self.y)/(self.y - 0.15735*self.x + 0.2424)
-        #self.v = (0.6581*self.y)/(self.y - 0.15735*self.x + 0.2424)
-        
-        # constant for McCamy's/Hernandez-Andrés formula
-        n = (self.x - self.x_e)/(self.y - self.y_e)
-        
-        # Correlated color temperature according to Hernández-Andrés (1999)
-        self.color_temp = ( self.A_0 + 
-                           self.A_1*np.exp(-n/self.t_1) + 
-                           self.A_2*np.exp(-n/self.t_2) + 
-                           self.A_3*np.exp(-n/self.t_3) )
-        
-        # Delete too high values
-        self.color_temp[self.color_temp > 30000] = 0
-        
-        # Affichage de la CCT
-        self.mean_temp_label.setText("Temperature moyenne = "+str(int(round(self.color_temp.mean())))+"K")
-        self.mean_temp_label.adjustSize()
-    	
-        # Affichage de l'illuminance (Y)
-        self.illuminance_label.setText("Illuminance moyenne = " + str(int(round((self.Y.mean())))))
-        self.illuminance_label.adjustSize()
-    
-        
-    def calculateHistogram(self):
-        """ Calculate the histogram of the input picture.
-        """
-        
-        # Define color map
-        colors = [ (255,0,0),(0,255,0),(0,0,255) ]
-        # Define empty image to plot histogram in
-        plot_to_fill = np.zeros((280,400,3))
-        # Define bins of the histogram
-        bins = np.arange(256).reshape(256,1)
-        
-        # Boucle sur les canaux
-        for channel, color in enumerate(colors):
-            # Calcul de l'histogramme
-            hist_item = cv2.calcHist(self.frame,[channel],None,[256],[0,256])
-            # Normalisation
-            cv2.normalize(hist_item,hist_item,0,255,cv2.NORM_MINMAX)
-            # Conversion
-            hist = np.int32(np.around(hist_item))
-            pts = np.int32(np.column_stack((bins, hist)))
-            cv2.polylines(plot_to_fill, [pts], False, color)
-        # Mettre dans le bon sens
-        histplot = np.flipud(plot_to_fill)
-        histplot = np.uint8(histplot)
-        
-        # Conversion en objet QPixelMap
-        self.histplot_qpix = self.convertToQPixelmap(histplot)
-            
-    def convertToQPixelmap(self, imgToConvert):
-        """ Convert cv2 image (BGR numpy array) to QPixelmap object to display
-        it the GUI.
-        """
-        
-        # Conversion en image QImage
-        if ( len(imgToConvert.shape) == 3 ):
-            img_qimg = QtGui.QImage(imgToConvert.data, 
-                                    imgToConvert.shape[1], 
-                                    imgToConvert.shape[0],
-                                    imgToConvert.strides[0],
-                                    QtGui.QImage.Format_RGB888)
-        else:
-			img_qimg = QtGui.QImage(imgToConvert.data, 
-                                    imgToConvert.shape[1], 
-                                    imgToConvert.shape[0],
-                                    imgToConvert.strides[0],
-                                    QtGui.QImage.Format_Indexed8)
-			
-        
-        # Conversion en image QPixmap pour l'afficher
-        return QtGui.QPixmap.fromImage(img_qimg)
-        
     def savePicture(self):
-        """ Save last frame as png picture.
+        """ This function opens a dialog box to save the current webcam frame.
+        One has to specify the extension.
         """
+        
         self.file_name = QtGui.QFileDialog.getSaveFileName(self, 
                                         "Save as... (specify extension)", "")
-        cv2.imwrite(self.file_name, self.frame)
+        cv2.imwrite(self.file_name, self.driver.frame)
         
-    def printToUser(self, message):
-        """ Print message in a box.
-        """
-        
-        self.messages_to_user.setText(message)
-        self.messages_to_user.adjustSize()
-        
+#%%############################################################################
 ###############################################################################
-def main():
-    qtapp = QtGui.QApplication(sys.argv)
-    gui = WebcamGui()
-    sys.exit(qtapp.exec_())
-    
-if __name__ == '__main__':
-    main()
+        
+#def main():
+#    qtapp = QtGui.QApplication(sys.argv)
+#    gui = WebcamGui()
+#    sys.exit(qtapp.exec_())
+#    
+#if __name__ == '__main__':
+#    main()
+
+gui = WebcamGui()

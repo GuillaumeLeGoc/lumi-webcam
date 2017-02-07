@@ -199,6 +199,7 @@ class WebcamGui(QtGui.QWidget):
         self.blue_label = QtGui.QLabel(self)
         self.illuminance_label = QtGui.QLabel(self)
         self.messages_to_user = QtGui.QLabel(self)
+        self.cct_roi_label = QtGui.QLabel(self)
                 
         # Add buttons to the layout
         grid_layout.addWidget(button_connect, 0, 0, 1, 1)
@@ -211,11 +212,12 @@ class WebcamGui(QtGui.QWidget):
         grid_layout.addWidget(self.device_id_text, 0, 5, 1, 1)
         
         # Canvas pour l'image de la caméra et températures
-        grid_layout.addWidget(self.snap_canvas, 1, 0, 1, 1)
+        grid_layout.addWidget(self.snap_canvas, 1, 0, 1, 2)
         grid_layout.addWidget(self.temp_canvas, 1, 2, 1, 5)
         
         # Moyennes RGB et illuminance
         grid_layout.addWidget(self.cct_label, 14, 2, 1, 1)
+        grid_layout.addWidget(self.cct_roi_label, 15, 2, 1, 1)
         grid_layout.addWidget(self.red_label, 15, 0, 1, 1)
         grid_layout.addWidget(self.green_label, 16, 0, 1, 1)
         grid_layout.addWidget(self.blue_label, 17, 0, 1, 1)
@@ -348,6 +350,18 @@ class WebcamGui(QtGui.QWidget):
                         self.temp_canvas.ui.histogram.setHistogramRange(
                                                                     0, 15000)
                         
+                        # Calculate the mean in Region of Interest
+                        self.getMeanInRoi()
+                        
+                        if self.cct_roi_curve != (None, None):
+                            self.cct_roi_label.setText("Mean color Temperature"
+                                                       + " in ROI: "
+                                                       + str(
+                                                           self.cct_roi_average
+                                                           ))
+                            self.cct_roi_label.adjustSize()
+                                                   
+                        
                         # Réinitialiser l'indice
                         self.indice = 0
                         
@@ -390,6 +404,15 @@ class WebcamGui(QtGui.QWidget):
         self.file_name = QtGui.QFileDialog.getSaveFileName(self, 
                                         "Save as... (specify extension)", "")
         cv2.imwrite(self.file_name, self.driver.frame)
+        
+    def getMeanInRoi(self):
+        """ Calculate the mean color temperature in the region of interested
+        selected by the user.
+        """
+        
+        self.cct_roi_curve = self.temp_canvas.roiCurve.getData()
+        if self.cct_roi_curve != (None, None):
+            self.cct_roi_average = self.cct_roi_curve[1].mean()
         
 #%%############################################################################
 ###############################################################################

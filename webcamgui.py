@@ -200,6 +200,8 @@ class WebcamGui(QtGui.QWidget):
         self.illuminance_label = QtGui.QLabel(self)
         self.messages_to_user = QtGui.QLabel(self)
         self.cct_roi_label = QtGui.QLabel(self)
+        self.x_label = QtGui.QLabel(self)
+        self.y_label = QtGui.QLabel(self)
                 
         # Add buttons to the layout
         grid_layout.addWidget(button_connect, 0, 0, 1, 1)
@@ -222,6 +224,8 @@ class WebcamGui(QtGui.QWidget):
         grid_layout.addWidget(self.green_label, 16, 0, 1, 1)
         grid_layout.addWidget(self.blue_label, 17, 0, 1, 1)
         grid_layout.addWidget(self.illuminance_label, 18, 0, 1, 1)
+        grid_layout.addWidget(self.x_label,16,2,1,1)
+        grid_layout.addWidget(self.y_label,17,2,1,1)
         
         # Verbose
         grid_layout.addWidget(self.messages_to_user, 20,1,1,10)
@@ -360,7 +364,11 @@ class WebcamGui(QtGui.QWidget):
                                                            self.cct_roi_average
                                                            ))
                             self.cct_roi_label.adjustSize()
-                                                   
+                          
+                        # Calculate the mean (on all picture) x and y
+                        self.x_label.setText("x: " + str(self.driver.x.mean()))
+                        self.x_label.adjustSize()
+                        self.y_label.setText("y: " + str(self.driver.y.mean()))
                         
                         # Réinitialiser l'indice
                         self.indice = 0
